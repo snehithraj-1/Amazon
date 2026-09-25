@@ -5,8 +5,9 @@ import pandas as pd
 import os
 import sys
 
-BASE = os.path.join(os.path.dirname(__file__), "..", "..", "..",
-                    "6ab10eb3b23ba_student_resource", "student_resource", "dataset")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from core import DATA_DIR
+BASE = DATA_DIR
 
 def main():
     # --- Training data ---

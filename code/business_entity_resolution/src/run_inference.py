@@ -26,13 +26,10 @@ if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from core import CACHE_DIR, OUTPUT_DIR
+from core import CACHE_DIR, OUTPUT_DIR, DATA_DIR, _resolve_dataset_file
 from features import FEATURE_NAMES, compute_pair_features
 
-# Paths
-ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-STUDENT_RES_DIR = os.path.join(ROOT_DIR, "6ab10eb3b23ba_student_resource", "student_resource")
-TEST_DIR = os.path.join(STUDENT_RES_DIR, "dataset", "test")
+TEST_DIR = os.path.join(DATA_DIR, "test")
 
 # Calibrated Decision Parameters from EXP-04
 BASE_THR = 0.97
@@ -170,8 +167,8 @@ def main():
     model = lgb.Booster(model_file=model_path)
 
     # 2. Load Candidate Datasets (Test S2 + S3)
-    s2_path = os.path.join(TEST_DIR, "test_source2.tsv")
-    s3_path = os.path.join(TEST_DIR, "test_source3.tsv")
+    s2_path = _resolve_dataset_file("test", "test_source2.tsv")
+    s3_path = _resolve_dataset_file("test", "test_source3.tsv")
 
     print(f"\n[1/4] Loading candidate datasets...", flush=True)
     t0 = time.time()
@@ -275,7 +272,7 @@ def main():
     print(f"  8 inverted indices built in {time.time() - t_idx:.1f}s. Memory optimized.", flush=True)
 
     # 4. Stream Source 1 in Batches
-    s1_path = os.path.join(TEST_DIR, "test_source1.tsv")
+    s1_path = _resolve_dataset_file("test", "test_source1.tsv")
     print(f"\n[4/4] Processing {s1_path} in streaming batches of {args.chunk_size:,}...", flush=True)
 
     s1_reader = pd.read_csv(s1_path, sep="\t", dtype=str, keep_default_na=False,

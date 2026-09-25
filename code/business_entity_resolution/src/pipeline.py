@@ -41,10 +41,8 @@ warnings.filterwarnings("ignore")
 # ============================================================================
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.join(SCRIPT_DIR, "..")
-BASE_DIR = os.path.join(PROJECT_DIR, "..", "..",
-                        "6ab10eb3b23ba_student_resource", "student_resource", "dataset")
-OUTPUT_DIR = os.path.join(PROJECT_DIR, "..", "..", "output")
-CACHE_DIR = os.path.join(PROJECT_DIR, "cache")
+from core import DATA_DIR, OUTPUT_DIR, CACHE_DIR
+BASE_DIR = DATA_DIR
 
 # ============================================================================
 # CONFIG
@@ -145,22 +143,12 @@ def name_prefix(name, k=3):
 # DATA LOADING
 # ============================================================================
 def load_src(split, num):
-    pre = "train" if split == "train" else "test"
-    p = os.path.join(BASE_DIR, split, f"{pre}_source{num}.tsv")
-    print(f"  Loading {os.path.basename(p)}...", end=" ", flush=True)
-    df = pd.read_csv(p, sep="\t", dtype=str, keep_default_na=False, engine='c')
-    print(f"{len(df):,} rows")
-    return df
+    from core import load_source
+    return load_source(split, num)
 
 def load_gt():
-    p = os.path.join(BASE_DIR, "train", "train_ground_truth.tsv")
-    df = pd.read_csv(p, sep="\t", dtype=str, keep_default_na=False)
-    gt = {}
-    for _, r in df.iterrows():
-        s1 = r["source1_entity_id"]
-        m = r["matched_entity_ids"]
-        gt[s1] = set(m.split(",")) if m.strip() else set()
-    return gt
+    from core import load_ground_truth
+    return load_ground_truth()
 
 def add_norms(df):
     """Add precomputed normalized columns."""

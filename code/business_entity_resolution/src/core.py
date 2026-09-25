@@ -23,15 +23,35 @@ if hasattr(sys.stdout, 'reconfigure'):
 # ── Paths ──────────────────────────────────────────────────────────────────
 SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.join(SCRIPT_DIR, "..")
-_candidate_data_dirs = [
-    os.environ.get("DATA_DIR", ""),
-    os.path.join(PROJECT_DIR, "..", "..", "6ab10eb3b23ba_student_resource", "student_resource", "dataset"),
-    os.path.join(PROJECT_DIR, "..", "dataset"),
-    "/kaggle/input/amazon-ml-challenge-2024/student_resource/dataset",
-    "/kaggle/input/student_resource/dataset",
-    "/kaggle/working/AMAZON/6ab10eb3b23ba_student_resource/student_resource/dataset",
-]
-DATA_DIR    = next((d for d in _candidate_data_dirs if d and os.path.exists(d)), _candidate_data_dirs[1])
+
+def _find_dataset_dir() -> str:
+    # 1. Explicit environment variable
+    env_dir = os.environ.get("DATA_DIR", "").strip()
+    if env_dir and os.path.exists(env_dir):
+        return os.path.abspath(env_dir)
+
+    # 2. Local relative paths (local development machine)
+    local_candidates = [
+        os.path.join(PROJECT_DIR, "..", "..", "6ab10eb3b23ba_student_resource", "student_resource", "dataset"),
+        os.path.join(PROJECT_DIR, "..", "dataset"),
+        os.path.join(PROJECT_DIR, "dataset"),
+        os.path.join(PROJECT_DIR, "..", "..", "dataset"),
+    ]
+    for p in local_candidates:
+        if os.path.exists(os.path.join(p, "train", "train_source1.tsv")) or os.path.exists(os.path.join(p, "train_source1.tsv")):
+            return os.path.abspath(p)
+
+    # 3. Dynamic recursive search in /kaggle/input (handles any dataset name on Kaggle)
+    if os.path.exists("/kaggle/input"):
+        for root, dirs, files in os.walk("/kaggle/input"):
+            if "train_source1.tsv" in files:
+                if os.path.basename(root).lower() == "train":
+                    return os.path.abspath(os.path.dirname(root))
+                return os.path.abspath(root)
+
+    return os.path.abspath(local_candidates[0])
+
+DATA_DIR    = _find_dataset_dir()
 OUTPUT_DIR  = os.path.join(PROJECT_DIR, "..", "..", "output")
 CACHE_DIR   = os.path.join(PROJECT_DIR, "cache")
 EXP_LOG     = os.path.join(PROJECT_DIR, "experiments.csv")
@@ -74,11 +94,57 @@ def _check_lfs_pointer(path: str):
         if not isinstance(e, RuntimeError):
             pass
 
+def _resolve_dataset_file(split: str, filename: str) -> str:
+    """Finds a dataset file using DATA_DIR or dynamic /kaggle/input search."""
+    # 1. Try DATA_DIR / split / filename
+    c1 = os.path.join(DATA_DIR, split, filename)
+    if os.path.exists(c1):
+        return c1
+    # 2. Try DATA_DIR / filename
+    c2 = os.path.join(DATA_DIR, filename)
+    if os.path.exists(c2):
+        return c2
+    # 3. Dynamic search in /kaggle/input if running on Kaggle
+    if os.path.exists("/kaggle/input"):
+        for root, dirs, files in os.walk("/kaggle/input"):
+            if filename in files:
+                return os.path.join(root, filename)
+    return c1
+
+def _kaggle_missing_hint(filename: str) -> str:
+    if not os.path.exists("/kaggle"):
+        return ""
+    input_items = []
+    try:
+        input_items = os.listdir("/kaggle/input")
+    except Exception:
+        pass
+    return (
+        f"\n====================== KAGGLE DATASET SETUP ======================\n"
+        f"Contents currently in /kaggle/input: {input_items}\n\n"
+        f"If the dataset is NOT attached to this Kaggle notebook:\n"
+        f"  1. Click '+ Add Input' (top-right or in the notebook sidebar).\n"
+        f"  2. Search for your dataset (or upload your dataset zip) and add it.\n\n"
+        f"If the dataset IS attached under a custom folder name:\n"
+        f"  Find where '{filename}' is located by running in a Kaggle cell:\n"
+        f"    !find /kaggle/input -name '{filename}'\n"
+        f"  Then set DATA_DIR before running, e.g.:\n"
+        f"    import os; os.environ['DATA_DIR'] = '/kaggle/input/<folder>/student_resource/dataset'\n"
+        f"==================================================================\n"
+    )
+
 def load_source(split: str, num: int) -> pd.DataFrame:
     pre = "train" if split == "train" else "test"
-    p = os.path.join(DATA_DIR, split, f"{pre}_source{num}.tsv")
+    filename = f"{pre}_source{num}.tsv"
+    p = _resolve_dataset_file(split, filename)
     if not os.path.exists(p):
-        raise FileNotFoundError(f"\n[DATASET ERROR] Source file not found: {p}\nPlease check the dataset path.")
+        hint = _kaggle_missing_hint(filename)
+        raise FileNotFoundError(
+            f"\n[DATASET ERROR] Source file not found: {p}\n"
+            f"Current DATA_DIR: '{DATA_DIR}'\n"
+            f"{hint}"
+            f"Please check your dataset path or set the DATA_DIR environment variable."
+        )
     _check_lfs_pointer(p)
     print(f"  Loading {os.path.basename(p)}...", end=" ", flush=True)
     df = pd.read_csv(p, sep="\t", dtype=str, keep_default_na=False, engine="c", encoding="utf-8")
@@ -95,9 +161,16 @@ def load_source(split: str, num: int) -> pd.DataFrame:
     return df
 
 def load_ground_truth() -> Dict[str, Set[str]]:
-    p = os.path.join(DATA_DIR, "train", "train_ground_truth.tsv")
+    filename = "train_ground_truth.tsv"
+    p = _resolve_dataset_file("train", filename)
     if not os.path.exists(p):
-        raise FileNotFoundError(f"\n[DATASET ERROR] Ground truth file not found: {p}\nPlease check the dataset path.")
+        hint = _kaggle_missing_hint(filename)
+        raise FileNotFoundError(
+            f"\n[DATASET ERROR] Ground truth file not found: {p}\n"
+            f"Current DATA_DIR: '{DATA_DIR}'\n"
+            f"{hint}"
+            f"Please check your dataset path or set the DATA_DIR environment variable."
+        )
     _check_lfs_pointer(p)
     print(f"  Loading {os.path.basename(p)}...", end=" ", flush=True)
     df = pd.read_csv(p, sep="\t", dtype=str, keep_default_na=False, encoding="utf-8")
